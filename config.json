@@ -19,7 +19,7 @@
         "face_det_threshold": 0.7,
         "face_rec_threshold": 0.45,
         "yolo_person_threshold": 0.5,
-        "yolo_threat_threshold": 0.65,
+        "yolo_threat_threshold": 0.55,
         "use_opencl": true
     },
     "sistema": {
