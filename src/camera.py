@@ -5,8 +5,69 @@ import threading
 import cv2
 import config
 
+class FrameGrabber(threading.Thread):
+    """Subproceso dedicado a leer frames del hardware a maxima velocidad (30 FPS) sin bloqueos."""
+    def __init__(self, cap, worker):
+        super().__init__()
+        self.cap = cap
+        self.worker = worker
+        self.daemon = True
+        
+    def run(self):
+        conteo_fallos = 0
+        while self.worker.running and not self.worker.stop_event.is_set():
+            ret, frame = self.cap.read()
+            if ret:
+                conteo_fallos = 0
+                
+                # Voltear horizontal si esta configurado (util para webcams)
+                if config.SISTEMA.get("voltear_horizontal", True):
+                    frame = cv2.flip(frame, 1)
+                    
+                self.worker.raw_frame = frame
+            else:
+                conteo_fallos += 1
+                if conteo_fallos >= 10:
+                    # Notificar al trabajador principal que reintente la conexion
+                    self.worker.reconnect_needed = True
+                time.sleep(0.01)
+
+class InferenceThread(threading.Thread):
+    """Subproceso dedicado exclusivamente a ejecutar la inferencia de IA en segundo plano."""
+    def __init__(self, worker):
+        super().__init__()
+        self.worker = worker
+        self.daemon = True
+        
+    def run(self):
+        # Tasa de inferencia controlada para no sobrecargar el procesador (unas 12 veces por segundo)
+        # 12 FPS de IA es ideal para vigilancia en tiempo real, mientras el video se muestra a 30 FPS.
+        fps_ia = 12.0
+        intervalo = 1.0 / fps_ia
+        
+        while self.worker.running and not self.worker.stop_event.is_set():
+            t_inicio = time.time()
+            frame = self.worker.raw_frame
+            
+            if frame is not None:
+                # Ejecutar inferencia completa (skip_inference=False)
+                # Esta llamada actualizara el cache interno detector.last_results[camera_id]
+                annotated_frame, eventos = self.worker.detector.process_frame(
+                    frame, camara_id=self.worker.camera_id, skip_inference=False
+                )
+                
+                # Procesar eventos en base de datos (SQLite / Firebase)
+                if eventos:
+                    self.worker.procesar_eventos(frame, annotated_frame, eventos)
+                    
+            # Controlar tasa de ejecucion
+            t_fin = time.time()
+            procesamiento = t_fin - t_inicio
+            espera = max(0.001, intervalo - procesamiento)
+            time.sleep(espera)
+
 class CameraWorker(threading.Thread):
-    """Trabajador en segundo plano para capturar, procesar y guardar eventos de una camara."""
+    """Trabajador principal que orquesta la lectura de frames y los renderiza en un loop estable de 30 FPS."""
     
     def __init__(self, camera_id, source, detector, db, latest_frames, stop_event):
         super().__init__()
@@ -17,7 +78,12 @@ class CameraWorker(threading.Thread):
         self.latest_frames = latest_frames
         self.stop_event = stop_event
         
-        self.daemon = True # El hilo finalizara si el programa principal se cierra
+        self.daemon = True
+        self.running = True
+        self.reconnect_needed = False
+        
+        # Almacenamiento del ultimo frame leido por el grabador
+        self.raw_frame = None
         
         # Tiempos de control para evitar spam en la base de datos (cool-downs)
         self.last_seen_times = {}    # {persona: timestamp}
@@ -33,50 +99,54 @@ class CameraWorker(threading.Thread):
         print(f"[CAMARA {self.camera_id}] Iniciando captura de flujo desde: {self.source}")
         
         cap = cv2.VideoCapture(self.source)
-        
-        # Ajustar buffer para reducir latencia (especialmente util en camaras RTSP/IP)
         if isinstance(self.source, str) and self.source.startswith("rtsp"):
             cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
             
-        conteo_fallos = 0
-        frame_count = 0
+        # Iniciar hilos auxiliares
+        self.grabber = FrameGrabber(cap, self)
+        self.grabber.start()
+        
+        self.inference = InferenceThread(self)
+        self.inference.start()
+        
+        # Loop principal de renderizado y visualizacion estable a 30 FPS
+        # Este hilo no hace inferencia pesada, por lo que nunca bajara de 30 FPS.
+        fps_objetivo = 30.0
+        intervalo_frame = 1.0 / fps_objetivo
         
         while not self.stop_event.is_set():
-            ret, frame = cap.read()
+            t_inicio = time.time()
             
-            if not ret:
-                conteo_fallos += 1
-                print(f"[CAMARA {self.camera_id}] Error al leer frame (Fallo #{conteo_fallos}). Reintentando...")
-                time.sleep(2.0)
-                
-                # Intentar reconectar si hay muchos fallos consecutivos
-                if conteo_fallos >= 5:
-                    print(f"[CAMARA {self.camera_id}] Reabriendo flujo de video...")
-                    cap.release()
-                    cap = cv2.VideoCapture(self.source)
-                    conteo_fallos = 0
+            # Reconectar si el grabador indico que el flujo se cayo
+            if self.reconnect_needed:
+                print(f"[CAMARA {self.camera_id}] Flujo caido. Reabriendo video...")
+                self.reconnect_needed = False
+                cap.release()
+                cap = cv2.VideoCapture(self.source)
+                self.grabber = FrameGrabber(cap, self)
+                self.grabber.start()
+                time.sleep(1.0)
                 continue
                 
-            conteo_fallos = 0
-            frame_count += 1
+            frame = self.raw_frame
+            if frame is not None:
+                # Copiar y pintar los ultimos cuadros de deteccion sobre el frame actual (cero latencia)
+                annotated_frame = frame.copy()
+                cache = self.detector.last_results.get(self.camera_id)
+                if cache is not None:
+                    self.detector.dibujar_resultados_cacheados(annotated_frame, cache)
+                
+                # Publicar el frame para que main.py lo muestre
+                self.latest_frames[self.camera_id] = annotated_frame
+                
+            # Control de tiempo para garantizar exactamente 30 FPS
+            t_fin = time.time()
+            procesamiento = t_fin - t_inicio
+            espera = max(0.001, intervalo_frame - procesamiento)
+            time.sleep(espera)
             
-            # Realizar inferencia completa cada 3 frames (multiplica por 3 la velocidad del video)
-            skip_inference = (frame_count % 3 != 0)
-            
-            # Inferencia IA en el frame
-            annotated_frame, eventos = self.detector.process_frame(
-                frame, camara_id=self.camera_id, skip_inference=skip_inference
-            )
-            
-            # Guardar el frame procesado en la memoria compartida para visualizacion
-            self.latest_frames[self.camera_id] = annotated_frame
-            
-            # Procesar eventos y logs
-            self.procesar_eventos(frame, annotated_frame, eventos)
-            
-            # Controlar tasa de captura para no saturar la CPU
-            time.sleep(0.01)
-            
+        # Detener hilos
+        self.running = False
         cap.release()
         print(f"[CAMARA {self.camera_id}] Flujo de video cerrado limpiamente.")
         
