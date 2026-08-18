@@ -1,0 +1,30 @@
+{
+    "camaras": [
+        {
+            "id": "Camara_Web_0",
+            "source": 0
+        }
+    ],
+    "database": {
+        "type": "sqlite",
+        "sqlite_db_name": "seguridad.db",
+        "firebase_db_url": "https://tu-proyecto-firebase-default-rtdb.firebaseio.com/",
+        "firebase_key_path": "firebase_key.json"
+    },
+    "detector": {
+        "yunet_path": "C:\\Users\\Pc\\.gemini\\antigravity-ide\\scratch\\Lector_personas\\modelos\\face_detection_yunet_2023mar.onnx",
+        "sface_path": "C:\\Users\\Pc\\.gemini\\antigravity-ide\\scratch\\Lector_personas\\modelos\\face_recognition_sface_2021dec.onnx",
+        "yolo_base_path": "C:\\Users\\Pc\\.gemini\\antigravity-ide\\scratch\\Lector_personas\\modelos\\yolo11n.pt",
+        "yolo_threat_path": "C:\\Users\\Pc\\.gemini\\antigravity-ide\\scratch\\Lector_personas\\modelos\\threat_detection.pt",
+        "face_det_threshold": 0.6,
+        "face_rec_threshold": 0.363,
+        "yolo_person_threshold": 0.5,
+        "yolo_threat_threshold": 0.4,
+        "use_opencl": true
+    },
+    "sistema": {
+        "mostrar_ventanas": true,
+        "guardar_capturas_alertas": true,
+        "guardar_alertas_desconocidos": false
+    }
+}
