@@ -1,5 +1,5 @@
 # Core libraries
-opencv-python>=4.8.0.76
+opencv-python==4.10.0.84
 numpy>=1.23.0
 
 # YOLO11 and Deep Learning
