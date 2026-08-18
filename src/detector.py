@@ -122,6 +122,9 @@ class SecurityDetector:
                 if set(cache_data.keys()) == set(imagenes_locales.keys()):
                     self.db_embeddings = {}
                     for name, embs in cache_data.items():
+                        # Si es un cache antiguo (lista simple de floats en lugar de lista de listas), envolverlo
+                        if len(embs) > 0 and not isinstance(embs[0], list):
+                            embs = [embs]
                         self.db_embeddings[name] = [np.array(e, dtype=np.float32) for e in embs]
                     print(f"[DB ROSTROS] Cargadas {len(self.db_embeddings)} identidades con multiples firmas desde el cache JSON.")
                     cache_valido = True
@@ -266,6 +269,9 @@ class SecurityDetector:
                 # Comparar con cada firma guardada (soporta multiples firmas por persona)
                 for nombre, embs in self.db_embeddings.items():
                     for db_feat in embs:
+                        # Validar tipo y dimensiones para evitar fallos de asercion en OpenCV
+                        if not isinstance(db_feat, np.ndarray) or db_feat.ndim == 0 or db_feat.size != 128:
+                            continue
                         score = self.recognizer_face.match(live_feat, db_feat, cosine_similarity_type)
                         if score > mejor_score:
                             mejor_score = score
