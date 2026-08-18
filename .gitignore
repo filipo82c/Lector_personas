@@ -1,0 +1,35 @@
+# Entorno Virtual
+.venv/
+env/
+venv/
+ENV/
+
+# Python cache y compilaciones
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+build/
+dist/
+*.spec
+
+# Modelos y Pesas de IA (demasiado pesados para Git)
+modelos/*.pt
+modelos/*.onnx
+
+# Base de datos local
+*.db
+*.sqlite3
+
+# Carpetas de datos locales (ignorar fotos, mantener carpetas con .gitkeep)
+alertas/*
+!alertas/.gitkeep
+db_rostros/*
+!db_rostros/.gitkeep
+
+# Configuraciones y credenciales
+.env
+config_private.json
+credentials.json
+firebase_key.json
