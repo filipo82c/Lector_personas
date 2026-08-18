@@ -46,9 +46,9 @@ def main():
     try:
         from ultralytics import YOLO
         
-        # Usamos yolov8n.pt como base preentrenada (para transfer learning)
-        print("[INFO] Cargando modelo base preentrenado yolov8n.pt...")
-        model = YOLO("yolov8n.pt")
+        # Usamos yolo11n.pt como base preentrenada (para transfer learning)
+        print("[INFO] Cargando modelo base preentrenado yolo11n.pt...")
+        model = YOLO("yolo11n.pt")
         
         # Lanzar entrenamiento
         # device='cpu' usara los 16 hilos del Ryzen 7 5700G (muy rapido para sets pequeños)
