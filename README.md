@@ -1,10 +1,10 @@
-# 🕵️ Lector de Personas IA - Reconocimiento Facial y Detección de Amenazas
+#Lector de Personas IA - Reconocimiento Facial y Detección de Amenazas
 
 Sistema de vigilancia inteligente optimizado para sectores privados y entornos de alta seguridad. Diseñado para procesar múltiples flujos de video simultáneamente (cámaras de seguridad RTSP o cámaras web locales) en segundo plano, reconociendo empleados/estudiantes a distancia mediante Deep Learning local y detectando amenazas crítias (armas de fuego y blancas) de forma instantánea.
 
 ---
 
-## 🌟 Características Principales
+##Características Principales
 
 *   **Detección y Reconocimiento Facial de Largo Alcance:** Utiliza **YuNet** (detector facial de alta velocidad) y **SFace** (extractor de firmas de 128 dimensiones) a través de OpenCV DNN, logrando capturas de rostros a varios metros de distancia de forma fluida.
 *   **Aceleración de Hardware AMD / Ryzen CPU:** Optimizado para correr a máxima velocidad en procesadores multinúcleo Ryzen y GPUs AMD usando aceleración gráfica nativa **OpenCL** en OpenCV.
@@ -17,7 +17,7 @@ Sistema de vigilancia inteligente optimizado para sectores privados y entornos d
 
 ---
 
-## 🏗️ Estructura del Proyecto
+##Estructura del Proyecto
 
 *   `modelos/`: Contiene los modelos `.onnx` de YuNet y SFace, y las pesas `.pt` de YOLO11.
 *   `db_rostros/`: Almacena las fotos de los empleados (`Nombre_Apellido.jpg`) y el archivo caché indexado `embeddings.json` para carga inmediata.
@@ -27,7 +27,7 @@ Sistema de vigilancia inteligente optimizado para sectores privados y entornos d
 
 ---
 
-## 🚀 Instalación y Configuración Rápida
+##Instalación y Configuración Rápida
 
 ### 1. Clonar el repositorio y configurar entorno
 Asegúrate de estar en el directorio raíz del proyecto y ejecuta:
@@ -82,7 +82,7 @@ python src/main.py
 
 ---
 
-## 📦 Empaquetado para Venta / Despliegue en Clientes (`.exe`)
+##Empaquetado para Venta / Despliegue en Clientes (`.exe`)
 
 Para entregar el software a una empresa cliente sin requerir que instalen Python, ejecuta el compilador automático:
 ```bash
