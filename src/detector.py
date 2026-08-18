@@ -2,6 +2,7 @@ import os
 import json
 import cv2
 import numpy as np
+from collections import Counter
 from ultralytics import YOLO
 import config
 
@@ -11,6 +12,10 @@ class SecurityDetector:
     def __init__(self):
         self.use_opencl = config.DETECTOR.get("use_opencl", True)
         self.target_inference_width = 640 # Redimensionar para inferencia ultra rapida
+        
+        # Rastreabilidad de rostros para estabilización temporal (elimina parpadeos)
+        self.face_tracks = {} # {track_id: { "centroid": (cx, cy), "history": [nombres], "frames_since_update": 0 }}
+        self.next_track_id = 0
         
         # Cache de detecciones previas por camara (para saltar frames sin parpadeos)
         self.last_results = {} # {camara_id: { "accesos": [...], "persons": [...], "threats": [...] }}
@@ -83,7 +88,6 @@ class SecurityDetector:
             # Soporte para archivos directos: Filip_Sanabria.png, Filip_Sanabria_lentes.png
             if os.path.isfile(item_path) and item.lower().endswith(formatos_validos):
                 # Extraer nombre base quitando sufijos despues del segundo guion bajo si es un patron
-                # Ej: Filip_Sanabria_lentes.png -> Filip Sanabria
                 partes = os.path.splitext(item)[0].split("_")
                 if len(partes) >= 2:
                     nombre = f"{partes[0]} {partes[1]}"
@@ -199,6 +203,8 @@ class SecurityDetector:
         self.detector_face.setInputSize((rw, rh))
         ret_face, faces = self.detector_face.detect(resized_frame)
         
+        nuevos_tracks = {}
+        
         if ret_face and faces is not None:
             cosine_similarity_type = cv2.FaceRecognizerSF_FR_COSINE if hasattr(cv2, 'FaceRecognizerSF_FR_COSINE') else 0
             rec_threshold = config.DETECTOR["face_rec_threshold"]
@@ -211,6 +217,34 @@ class SecurityDetector:
                 fw_orig = int(fw * scale_x)
                 fh_orig = int(fh * scale_y)
                 conf_det = face[14]
+                
+                # Calcular centroide para tracking
+                cx = fx_orig + fw_orig / 2
+                cy = fy_orig + fh_orig / 2
+                
+                # Buscar track mas cercano en el cache de tracks
+                min_dist = float('inf')
+                match_id = None
+                for tid, track in self.face_tracks.items():
+                    tcx, tcy = track["centroid"]
+                    dist = np.hypot(cx - tcx, cy - tcy)
+                    if dist < min_dist:
+                        min_dist = dist
+                        match_id = tid
+                        
+                if match_id is not None and min_dist < 120:
+                    tid = match_id
+                    track_data = self.face_tracks[tid]
+                    track_data["centroid"] = (cx, cy)
+                    track_data["frames_since_update"] = 0
+                else:
+                    tid = self.next_track_id
+                    self.next_track_id += 1
+                    track_data = {
+                        "centroid": (cx, cy),
+                        "history": [],
+                        "frames_since_update": 0
+                    }
                 
                 # Crear puntos de landmarks escalados para alinear sobre el frame de alta resolucion
                 face_scaled = face.copy()
@@ -239,24 +273,42 @@ class SecurityDetector:
                             
                 # Validar con umbral
                 es_reconocido = mejor_score >= rec_threshold
-                label_name = mejor_nombre if es_reconocido else "Desconocido"
-                conf_final = mejor_score if es_reconocido else conf_det
-                color_rostro = (0, 255, 0) if es_reconocido else (0, 255, 255)
+                label_raw = mejor_nombre if es_reconocido else "Desconocido"
+                
+                # Añadir al historial de tracking
+                track_data["history"].append(label_raw)
+                if len(track_data["history"]) > 7:
+                    track_data["history"].pop(0)
+                    
+                # El nombre estable a mostrar es el mas comun del historial (moda)
+                mode_name = Counter(track_data["history"]).most_common(1)[0][0]
+                
+                color_rostro = (0, 255, 0) if mode_name != "Desconocido" else (0, 255, 255)
                 
                 # Cachear coordenadas originales
                 cache_frame["accesos"].append({
                     "box": [fx_orig, fy_orig, fw_orig, fh_orig],
-                    "label": f"{label_name} ({mejor_score:.2f})" if es_reconocido else "Desconocido",
+                    "label": f"{mode_name} ({mejor_score:.2f})" if mode_name != "Desconocido" else "Desconocido",
                     "color": color_rostro
                 })
                 
                 eventos.append({
                     "tipo": "acceso",
-                    "persona": label_name,
-                    "confianza": float(conf_final),
-                    "es_reconocido": es_reconocido,
+                    "persona": mode_name,
+                    "confianza": float(mejor_score if mode_name != "Desconocido" else conf_det),
+                    "es_reconocido": mode_name != "Desconocido",
                     "bbox_rostro": [fx_orig, fy_orig, fw_orig, fh_orig]
                 })
+                
+                nuevos_tracks[tid] = track_data
+
+        # Mantener vivos los tracks que no se vieron en este frame por hasta 10 frames
+        for tid, track in list(self.face_tracks.items()):
+            if tid not in nuevos_tracks:
+                track["frames_since_update"] += 1
+                if track["frames_since_update"] < 10:
+                    nuevos_tracks[tid] = track
+        self.face_tracks = nuevos_tracks
 
         # 2. DETECCION DE CUERPO (YOLO11 sobre frame redimensionado para velocidad)
         res_base = self.yolo_base(resized_frame, verbose=False)[0]
