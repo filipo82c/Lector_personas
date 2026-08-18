@@ -39,6 +39,7 @@ class CameraWorker(threading.Thread):
             cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
             
         conteo_fallos = 0
+        frame_count = 0
         
         while not self.stop_event.is_set():
             ret, frame = cap.read()
@@ -57,9 +58,15 @@ class CameraWorker(threading.Thread):
                 continue
                 
             conteo_fallos = 0
+            frame_count += 1
+            
+            # Realizar inferencia completa cada 3 frames (multiplica por 3 la velocidad del video)
+            skip_inference = (frame_count % 3 != 0)
             
             # Inferencia IA en el frame
-            annotated_frame, eventos = self.detector.process_frame(frame, camara_id=self.camera_id)
+            annotated_frame, eventos = self.detector.process_frame(
+                frame, camara_id=self.camera_id, skip_inference=skip_inference
+            )
             
             # Guardar el frame procesado en la memoria compartida para visualizacion
             self.latest_frames[self.camera_id] = annotated_frame

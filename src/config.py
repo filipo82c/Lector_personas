@@ -41,7 +41,7 @@ DEFAULT_CONFIG = {
         "face_det_threshold": 0.6,    # Confianza min para detectar rostro
         "face_rec_threshold": 0.363,  # Umbral similitud de coseno para SFace (> 0.363 es misma persona)
         "yolo_person_threshold": 0.5, # Confianza min para detectar cuerpo de persona
-        "yolo_threat_threshold": 0.4, # Confianza min para detectar armas
+        "yolo_threat_threshold": 0.65, # Confianza min para detectar armas (subido de 0.4 para evitar falsos positivos)
         
         # Aceleracion por hardware (OpenCL para GPU AMD)
         "use_opencl": True
