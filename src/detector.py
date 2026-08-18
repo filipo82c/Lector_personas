@@ -30,13 +30,20 @@ class SecurityDetector:
         print("Cargando modelo YOLO de amenazas (Armas)...")
         self.yolo_threat = YOLO(config.DETECTOR["yolo_threat_path"])
         
-        # Clases del modelo de amenazas (Subh775/Threat-Detection-YOLOv8n)
-        self.threat_labels = {
-            0: "Arma de Fuego",
-            1: "Explosivo",
-            2: "Granada",
-            3: "Arma Blanca"
-        }
+        # Obtener clases dinámicamente del modelo YOLO y traducirlas si aplica
+        self.threat_labels = {}
+        for idx, name in self.yolo_threat.names.items():
+            name_lower = name.lower()
+            if name_lower in ["gun", "guns", "pistol", "rifle", "firearm"]:
+                self.threat_labels[idx] = "Arma de Fuego"
+            elif name_lower in ["knife", "knives", "blade", "sword", "weapon"]:
+                self.threat_labels[idx] = "Arma Blanca"
+            elif name_lower in ["explosive", "explosives", "bomb"]:
+                self.threat_labels[idx] = "Explosivo"
+            elif name_lower in ["grenade", "grenades"]:
+                self.threat_labels[idx] = "Granada"
+            else:
+                self.threat_labels[idx] = name.capitalize()
         
         # 3. Base de Datos de Rostros
         self.db_embeddings = {} # nombre -> [lista de embeddings]
