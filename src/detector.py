@@ -2,6 +2,7 @@ import os
 import json
 import cv2
 import numpy as np
+import time
 from collections import Counter
 from ultralytics import YOLO
 import config
@@ -12,6 +13,7 @@ class SecurityDetector:
     def __init__(self):
         self.use_opencl = config.DETECTOR.get("use_opencl", True)
         self.target_inference_width = 640 # Redimensionar para inferencia ultra rapida
+        self.last_cache_save_time = 0
         
         # Rastreabilidad de rostros para estabilización temporal (elimina parpadeos)
         self.face_tracks = {} # {track_id: { "centroid": (cx, cy), "history": [nombres], "frames_since_update": 0 }}
@@ -167,13 +169,18 @@ class SecurityDetector:
                     del self.db_embeddings[nombre]
             
             # Guardar en cache JSON
-            try:
-                cache_to_save = {name: [emb.tolist() for emb in embs] for name, embs in self.db_embeddings.items()}
-                with open(embeddings_json_path, "w", encoding="utf-8") as f:
-                    json.dump(cache_to_save, f, indent=4, ensure_ascii=False)
-                print("[DB ROSTROS] Cache JSON de embeddings guardado exitosamente.")
-            except Exception as e:
-                print(f"[DB ROSTROS] Error al guardar embeddings.json: {e}")
+            self.guardar_cache_embeddings()
+
+    def guardar_cache_embeddings(self):
+        """Guarda la base de datos de embeddings actual en el cache JSON."""
+        embeddings_json_path = os.path.join(config.DB_DIR, "embeddings.json")
+        try:
+            cache_to_save = {name: [emb.tolist() for emb in embs] for name, embs in self.db_embeddings.items()}
+            with open(embeddings_json_path, "w", encoding="utf-8") as f:
+                json.dump(cache_to_save, f, indent=4, ensure_ascii=False)
+            print("[DB ROSTROS] Cache JSON de embeddings guardado exitosamente.")
+        except Exception as e:
+            print(f"[DB ROSTROS] Error al guardar embeddings.json: {e}")
                 
     def process_frame(self, frame, camara_id="Camara", skip_inference=False):
         """Procesa un frame. Si skip_inference=True, dibuja los resultados cacheados para mantener altos FPS."""
@@ -296,6 +303,30 @@ class SecurityDetector:
                 # El nombre estable a mostrar es el mas comun del historial (moda)
                 mode_name = Counter(track_data["history"]).most_common(1)[0][0]
                 
+                # Auto-aprendizaje dinámico (Active Learning)
+                # Si es reconocido de forma estable en el track actual, pero esta cara en vivo tiene un angulo
+                # diferente que nos da similitud moderada (ej. entre 0.40 y 0.58), auto-registramos este perfil
+                if mode_name != "Desconocido" and mode_name in self.db_embeddings:
+                    max_sim = -1.0
+                    for db_feat in self.db_embeddings[mode_name]:
+                        # Validar tipo y dimensiones
+                        if not isinstance(db_feat, np.ndarray) or db_feat.ndim == 0 or db_feat.size != 128:
+                            continue
+                        score = self.recognizer_face.match(live_feat, db_feat, cosine_similarity_type)
+                        if score > max_sim:
+                            max_sim = score
+                            
+                    # Si es una firma util y no tenemos demasiados perfiles de esta persona (limite 8)
+                    if 0.40 <= max_sim < 0.58 and len(self.db_embeddings[mode_name]) < 8:
+                        self.db_embeddings[mode_name].append(live_feat.copy())
+                        print(f"[AUTO-APRENDIZAJE] Aprendida nueva firma de perfil para {mode_name} (Similitud: {max_sim:.2f})")
+                        
+                        # Guardar a disco con limitador de tasa de 10 segundos
+                        ahora_time = time.time()
+                        if ahora_time - self.last_cache_save_time > 10.0:
+                            self.guardar_cache_embeddings()
+                            self.last_cache_save_time = ahora_time
+                            
                 color_rostro = (0, 255, 0) if mode_name != "Desconocido" else (0, 255, 255)
                 
                 # Cachear coordenadas originales
