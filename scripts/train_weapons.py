@@ -53,11 +53,11 @@ def main():
         # Lanzar entrenamiento
         # device='cpu' usara los 16 hilos del Ryzen 7 5700G (muy rapido para sets pequeños)
         # Si tienes GPU NVIDIA/CUDA configurada puedes usar device=0.
-        # Subimos las epocas a 50 para que aprenda mejor
-        print("[INFO] Iniciando entrenamiento por 50 epocas...")
+        # Subimos las epocas a 150 para que aprenda mejor y tenga mas informacion
+        print("[INFO] Iniciando entrenamiento por 150 epocas...")
         model.train(
             data=yaml_path,
-            epochs=50,
+            epochs=150,
             imgsz=640,
             device="cpu",
             workers=4,
