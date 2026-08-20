@@ -26,11 +26,18 @@ class FrameGrabber(threading.Thread):
                     
                 self.worker.raw_frame = frame
             else:
+                # Si es un archivo de video local y llego al final, rebobinarlo para reproduccion continua
+                if isinstance(self.worker.source, str) and os.path.exists(self.worker.source):
+                    self.cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
+                    time.sleep(0.03)
+                    continue
+
                 conteo_fallos += 1
-                if conteo_fallos >= 10:
-                    # Notificar al trabajador principal que reintente la conexion
+                if conteo_fallos == 10:
+                    print(f"[!] [CAMARA {self.worker.camera_id}] No se pudo obtener imagen desde la fuente '{self.worker.source}'.")
+                    print("    Tip: Si no tienes camara física conectada, puedes colocar la ruta a un archivo .mp4 en config.json.")
                     self.worker.reconnect_needed = True
-                time.sleep(0.01)
+                time.sleep(0.5)
 
 class InferenceThread(threading.Thread):
     """Subproceso dedicado exclusivamente a ejecutar la inferencia de IA en segundo plano."""
@@ -99,6 +106,11 @@ class CameraWorker(threading.Thread):
         print(f"[CAMARA {self.camera_id}] Iniciando captura de flujo desde: {self.source}")
         
         cap = cv2.VideoCapture(self.source)
+        # Intentar solicitar resolución HD / Full HD al dispositivo de cámara
+        if isinstance(self.source, int) or (isinstance(self.source, str) and self.source.isdigit()):
+            cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1920)
+            cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 1080)
+            
         if isinstance(self.source, str) and self.source.startswith("rtsp"):
             cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
             

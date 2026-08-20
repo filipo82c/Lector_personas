@@ -1,5 +1,6 @@
 import os
 import sys
+import subprocess
 import requests
 
 # Configurar carpetas del proyecto
@@ -43,7 +44,22 @@ def descargar_con_progreso(url, path):
 
 def main():
     print("=== Inicializando Configuracion del Lector de Personas ===")
-    
+
+    # 0. Crear entorno virtual .venv e instalar dependencias si no existe
+    venv_dir = os.path.join(BASE_DIR, ".venv")
+    if not os.path.exists(venv_dir):
+        print("\n[+] Creando entorno virtual en .venv...")
+        try:
+            subprocess.run([sys.executable, "-m", "venv", venv_dir], check=True)
+            pip_bin = os.path.join(venv_dir, "Scripts", "pip.exe") if sys.platform == "win32" else os.path.join(venv_dir, "bin", "pip")
+            req_file = os.path.join(BASE_DIR, "requirements.txt")
+            if os.path.exists(req_file):
+                print("[+] Instalando dependencias de requirements.txt...")
+                subprocess.run([pip_bin, "install", "-r", req_file], check=True)
+                print("[OK] Entorno virtual y dependencias creados con exito.")
+        except Exception as e:
+            print(f"[!] Aviso al crear entorno virtual: {e}")
+
     # 1. Crear directorios si no existen
     for folder in [MODEL_DIR, DB_DIR, ALERT_DIR, SRC_DIR]:
         if not os.path.exists(folder):

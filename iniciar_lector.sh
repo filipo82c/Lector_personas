@@ -1,29 +1,13 @@
 #!/bin/bash
-echo "=============================================================="
-echo "        INICIANDO SISTEMA DE SEGURIDAD INTELIGENTE"
-echo "=============================================================="
-echo ""
-
-# Obtener el directorio del script
+# Obtener el directorio absoluto del proyecto
 DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
 cd "$DIR"
 
-# Verificar si el entorno virtual existe
-if [ ! -f ".venv/bin/activate" ]; then
-    echo "[ERROR] No se encontro el entorno virtual en .venv/"
-    echo "Por favor, ejecuta primero scripts/setup_project.py"
-    read -p "Presiona Enter para salir..."
-    exit 1
+# Ejecutar usando el entorno virtual .venv directamente
+if [ -f "$DIR/.venv/bin/python3" ]; then
+    "$DIR/.venv/bin/python3" "$DIR/src/main.py" "$@"
+elif [ -f "$DIR/.venv/bin/python" ]; then
+    "$DIR/.venv/bin/python" "$DIR/src/main.py" "$@"
+else
+    python3 "$DIR/src/main.py" "$@"
 fi
-
-echo "[OK] Activando entorno virtual..."
-source .venv/bin/activate
-
-echo "[OK] Lanzando aplicacion principal de IA..."
-python3 src/main.py
-
-echo ""
-echo "=============================================================="
-echo "        EL SISTEMA HA FINALIZADO SU EJECUCION"
-echo "=============================================================="
-read -p "Presiona Enter para salir..."

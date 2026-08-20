@@ -86,3 +86,16 @@ CAMARAS = config["camaras"]
 DATABASE = config["database"]
 DETECTOR = config["detector"]
 SISTEMA = config["sistema"]
+
+# Garantizar que las rutas de los modelos sean validas y multiplataforma (Linux / Windows / macOS)
+for key in ["yunet_path", "sface_path", "yolo_base_path", "yolo_threat_path"]:
+    path_val = DETECTOR.get(key, "")
+    if not os.path.exists(path_val):
+        filename = os.path.basename(path_val)
+        candidate = os.path.join(MODEL_DIR, filename)
+        if os.path.exists(candidate):
+            DETECTOR[key] = candidate
+        else:
+            # Mantener la ruta base esperada si aun no esta descargado
+            DETECTOR[key] = candidate
+

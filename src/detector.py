@@ -1,5 +1,6 @@
 import os
 import json
+import zipfile
 import cv2
 import numpy as np
 import time
@@ -30,7 +31,36 @@ class SecurityDetector:
         self.yolo_base = YOLO(config.DETECTOR["yolo_base_path"])
         
         print("Cargando modelo YOLO de amenazas (Armas)...")
-        self.yolo_threat = YOLO(config.DETECTOR["yolo_threat_path"])
+        threat_path = config.DETECTOR["yolo_threat_path"]
+        
+        # Soporte automatico por si el modelo proviene de un archivo ZIP de Google Drive / Colab
+        if os.path.exists(threat_path) and (threat_path.endswith(".zip") or zipfile.is_zipfile(threat_path)):
+            print(f"[!] Se detecto que '{os.path.basename(threat_path)}' es un archivo comprimido ZIP. Extrayendo pesos .pt...")
+            temp_extract_dir = os.path.join(config.MODEL_DIR, "_tmp_zip")
+            os.makedirs(temp_extract_dir, exist_ok=True)
+            with zipfile.ZipFile(threat_path, 'r') as zip_ref:
+                zip_ref.extractall(temp_extract_dir)
+            
+            # Buscar el archivo .pt extraido (ej: best.pt o weights/best.pt)
+            pt_encontrado = None
+            for root, _, files in os.walk(temp_extract_dir):
+                for f in files:
+                    if f.endswith(".pt"):
+                        pt_encontrado = os.path.join(root, f)
+                        break
+                if pt_encontrado:
+                    break
+            
+            if pt_encontrado:
+                target_pt = os.path.join(config.MODEL_DIR, "threat_detection.pt")
+                if os.path.exists(target_pt) and os.path.abspath(target_pt) != os.path.abspath(pt_encontrado):
+                    os.remove(target_pt)
+                os.replace(pt_encontrado, target_pt)
+                threat_path = target_pt
+                config.DETECTOR["yolo_threat_path"] = target_pt
+                print(f"[OK] Pesos .pt extraidos exitosamente a: {target_pt}")
+
+        self.yolo_threat = YOLO(threat_path)
         
         # Obtener clases dinámicamente del modelo YOLO y traducirlas si aplica
         self.threat_labels = {}

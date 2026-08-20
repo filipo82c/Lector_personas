@@ -1,0 +1,9 @@
+[Desktop Entry]
+Version=1.0
+Name=Lector de Personas IA
+Comment=Sistema de Reconocimiento Facial y Detección de Amenazas en Tiempo Real
+Exec=/bin/bash -c "cd '%k/..' && ./iniciar_lector.sh"
+Icon=%k/../assets/icon.png
+Terminal=false
+Type=Application
+Categories=Security;System;Utility;
