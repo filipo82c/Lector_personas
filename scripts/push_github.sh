@@ -42,8 +42,11 @@ git add .
 echo "[+] Creando commit..."
 git commit -m "Interfaz de escritorio nativa SOC, motor desacoplado y soporte multi-monitor"
 
+# Garantizar que la rama local se llame main
+git branch -M main
+
 echo "[+] Subiendo a GitHub (branch main)..."
-git push origin main
+git push -u origin main
 
 echo ""
 echo "=============================================================="
