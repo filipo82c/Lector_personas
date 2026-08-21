@@ -45,6 +45,10 @@ git commit -m "Interfaz de escritorio nativa SOC, motor desacoplado y soporte mu
 # Garantizar que la rama local se llame main
 git branch -M main
 
+if command -v gh &> /dev/null; then
+    gh auth setup-git 2>/dev/null || true
+fi
+
 echo "[+] Subiendo a GitHub (branch main)..."
 git push -u origin main
 
