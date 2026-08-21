@@ -255,21 +255,19 @@ class SecurityDetector:
         if ret_face and faces is not None:
             cosine_similarity_type = cv2.FaceRecognizerSF_FR_COSINE if hasattr(cv2, 'FaceRecognizerSF_FR_COSINE') else 0
             rec_threshold = config.DETECTOR["face_rec_threshold"]
+            candidatos_frame = []
             
-            for face in faces:
-                # Escalar coordenadas de regreso al tamaño original
-                fx, fy, fw, fh = map(int, face[0:4])
+            for f_idx, face in enumerate(faces):
+                fx, fy, fw, fh = map(int, face[:4])
                 fx_orig = int(fx * scale_x)
                 fy_orig = int(fy * scale_y)
                 fw_orig = int(fw * scale_x)
                 fh_orig = int(fh * scale_y)
-                conf_det = face[14]
                 
-                # Calcular centroide para tracking
                 cx = fx_orig + fw_orig / 2
                 cy = fy_orig + fh_orig / 2
                 
-                # Buscar track mas cercano en el cache de tracks
+                # Tracking
                 min_dist = float('inf')
                 match_id = None
                 for tid, track in self.face_tracks.items():
@@ -293,7 +291,6 @@ class SecurityDetector:
                         "frames_since_update": 0
                     }
                 
-                # Crear puntos de landmarks escalados para alinear sobre el frame de alta resolucion
                 face_scaled = face.copy()
                 face_scaled[0] = fx_orig
                 face_scaled[1] = fy_orig
@@ -303,73 +300,83 @@ class SecurityDetector:
                     face_scaled[idx] = face[idx] * scale_x
                     face_scaled[idx+1] = face[idx+1] * scale_y
                 
-                # Alinear y extraer de la imagen original en alta resolucion para maxima precision
                 aligned = self.recognizer_face.alignCrop(frame, face_scaled)
                 live_feat = self.recognizer_face.feature(aligned).flatten()
                 
-                mejor_nombre = "Desconocido"
-                mejor_score = -1.0
-                
-                # Comparar con cada firma guardada (soporta multiples firmas por persona)
+                # Calcular puntaje contra cada persona de la base de datos estricta
+                scores_persona = {}
                 for nombre, embs in self.db_embeddings.items():
+                    max_s = -1.0
                     for db_feat in embs:
-                        # Validar tipo y dimensiones para evitar fallos de asercion en OpenCV
                         if not isinstance(db_feat, np.ndarray) or db_feat.ndim == 0 or db_feat.size != 128:
                             continue
-                        score = self.recognizer_face.match(live_feat, db_feat, cosine_similarity_type)
-                        if score > mejor_score:
-                            mejor_score = score
-                            mejor_nombre = nombre
-                            
-                # Validar con umbral
-                es_reconocido = mejor_score >= rec_threshold
-                label_raw = mejor_nombre if es_reconocido else "Desconocido"
+                        s = self.recognizer_face.match(live_feat, db_feat, cosine_similarity_type)
+                        if s > max_s:
+                            max_s = s
+                    if max_s > -1.0:
+                        scores_persona[nombre] = max_s
+                        
+                personas_ord = sorted(scores_persona.items(), key=lambda x: x[1], reverse=True)
+                top_nombre = "Desconocido"
+                top_score = -1.0
+                segundo_score = -1.0
                 
-                # Añadir al historial de tracking
+                if personas_ord:
+                    top_nombre, top_score = personas_ord[0]
+                    if len(personas_ord) > 1:
+                        segundo_score = personas_ord[1][1]
+                        
+                margen = (top_score - segundo_score) if len(personas_ord) > 1 else 1.0
+                
+                candidatos_frame.append({
+                    "f_idx": f_idx,
+                    "tid": tid,
+                    "track_data": track_data,
+                    "box_orig": [fx_orig, fy_orig, fw_orig, fh_orig],
+                    "top_nombre": top_nombre,
+                    "top_score": top_score,
+                    "margen": margen
+                })
+                
+            # ORDENAR Y ASIGNACIÓN ÚNICA UNO-A-UNO (Ningún nombre se puede repetir en el mismo frame)
+            candidatos_frame.sort(key=lambda x: x["top_score"], reverse=True)
+            nombres_asignados = set()
+            
+            for c in candidatos_frame:
+                tid = c["tid"]
+                track_data = c["track_data"]
+                fx_orig, fy_orig, fw_orig, fh_orig = c["box_orig"]
+                top_nombre = c["top_nombre"]
+                top_score = c["top_score"]
+                margen = c["margen"]
+                
+                # REGLAS DE RECONOCIMIENTO ESTRICTO:
+                # 1. Similitud >= 0.48 (Umbral estricto para SFace)
+                # 2. Margen de distinción respecto al 2do candidato >= 0.08
+                # 3. La identidad NO debe haber sido asignada ya a otro rostro en este frame
+                es_valido = (top_score >= rec_threshold) and (margen >= 0.08) and (top_nombre not in nombres_asignados)
+                
+                label_raw = top_nombre if es_valido else "Desconocido"
+                if es_valido:
+                    nombres_asignados.add(top_nombre)
+                    
                 track_data["history"].append(label_raw)
                 if len(track_data["history"]) > 7:
                     track_data["history"].pop(0)
                     
-                # El nombre estable a mostrar es el mas comun del historial (moda)
                 mode_name = Counter(track_data["history"]).most_common(1)[0][0]
-                
-                # Auto-aprendizaje dinámico (Active Learning)
-                # Si es reconocido de forma estable en el track actual, pero esta cara en vivo tiene un angulo
-                # diferente que nos da similitud moderada (ej. entre 0.40 y 0.58), auto-registramos este perfil
-                if mode_name != "Desconocido" and mode_name in self.db_embeddings:
-                    max_sim = -1.0
-                    for db_feat in self.db_embeddings[mode_name]:
-                        # Validar tipo y dimensiones
-                        if not isinstance(db_feat, np.ndarray) or db_feat.ndim == 0 or db_feat.size != 128:
-                            continue
-                        score = self.recognizer_face.match(live_feat, db_feat, cosine_similarity_type)
-                        if score > max_sim:
-                            max_sim = score
-                            
-                    # Si es una firma util y no tenemos demasiados perfiles de esta persona (limite 8)
-                    if 0.40 <= max_sim < 0.58 and len(self.db_embeddings[mode_name]) < 8:
-                        self.db_embeddings[mode_name].append(live_feat.copy())
-                        print(f"[AUTO-APRENDIZAJE] Aprendida nueva firma de perfil para {mode_name} (Similitud: {max_sim:.2f})")
-                        
-                        # Guardar a disco con limitador de tasa de 10 segundos
-                        ahora_time = time.time()
-                        if ahora_time - self.last_cache_save_time > 10.0:
-                            self.guardar_cache_embeddings()
-                            self.last_cache_save_time = ahora_time
-                            
                 color_rostro = (0, 255, 0) if mode_name != "Desconocido" else (0, 255, 255)
                 
-                # Cachear coordenadas originales
                 cache_frame["accesos"].append({
                     "box": [fx_orig, fy_orig, fw_orig, fh_orig],
-                    "label": f"{mode_name} ({mejor_score:.2f})" if mode_name != "Desconocido" else "Desconocido",
+                    "label": f"{mode_name} ({top_score:.2f})" if mode_name != "Desconocido" else "Desconocido",
                     "color": color_rostro
                 })
                 
                 eventos.append({
                     "tipo": "acceso",
                     "persona": mode_name,
-                    "confianza": float(mejor_score if mode_name != "Desconocido" else conf_det),
+                    "confianza": float(top_score if mode_name != "Desconocido" else 0.0),
                     "es_reconocido": mode_name != "Desconocido",
                     "bbox_rostro": [fx_orig, fy_orig, fw_orig, fh_orig]
                 })
@@ -415,6 +422,12 @@ class SecurityDetector:
                 by1_orig = int(by1 * scale_y)
                 bx2_orig = int(bx2 * scale_x)
                 by2_orig = int(by2 * scale_y)
+                
+                # Filtro de área mínima para evitar falsas alarmas por ruido o detalles diminutos
+                w_box = bx2_orig - bx1_orig
+                h_box = by2_orig - by1_orig
+                if (w_box * h_box) < 900:
+                    continue
                 
                 amenaza_nombre = self.threat_labels[cls_id]
                 
