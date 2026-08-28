@@ -435,21 +435,53 @@ class SecurityDetector:
         self.face_tracks = nuevos_tracks
 
         # 2. DETECCION DE CUERPO (YOLO11 sobre frame redimensionado para velocidad)
-        res_base = self.yolo_base(resized_frame, verbose=False)[0]
         yolo_person_threshold = config.DETECTOR["yolo_person_threshold"]
         
-        for box in res_base.boxes:
-            cls_id = int(box.cls[0])
-            conf = float(box.conf[0])
+        # Inferencia intercalada para mantener 30+ FPS fluidos en salas concurridas
+        if not hasattr(self, 'frame_counter'):
+            self.frame_counter = 0
+            self.cached_person_boxes = []
             
-            if cls_id == 0 and conf >= yolo_person_threshold:
-                bx1, by1, bx2, by2 = map(int, box.xyxy[0])
-                bx1_orig = int(bx1 * scale_x)
-                by1_orig = int(by1 * scale_y)
-                bx2_orig = int(bx2 * scale_x)
-                by2_orig = int(by2 * scale_y)
+        self.frame_counter += 1
+        
+        if self.frame_counter % 2 == 1:
+            res_base = self.yolo_base(resized_frame, verbose=False)[0]
+            person_boxes_current = []
+            for box in res_base.boxes:
+                cls_id = int(box.cls[0])
+                conf = float(box.conf[0])
                 
-                cache_frame["persons"].append([bx1_orig, by1_orig, bx2_orig, by2_orig])
+                if cls_id == 0 and conf >= yolo_person_threshold:
+                    bx1, by1, bx2, by2 = map(int, box.xyxy[0])
+                    bx1_orig = int(bx1 * scale_x)
+                    by1_orig = int(by1 * scale_y)
+                    bx2_orig = int(bx2 * scale_x)
+                    by2_orig = int(by2 * scale_y)
+                    person_boxes_current.append([bx1_orig, by1_orig, bx2_orig, by2_orig])
+            self.cached_person_boxes = person_boxes_current
+            
+        cache_frame["persons"] = list(self.cached_person_boxes)
+        
+        # SÍNTESIS DE RECUADRO DE PERSONA PARA ROSTROS SIN CUERPO (Garantiza recuadro azul para personas sentadas/ocluidas)
+        for acceso in cache_frame["accesos"]:
+            fx_orig, fy_orig, fw_orig, fh_orig = acceso["box"]
+            fcx = fx_orig + fw_orig / 2
+            fcy = fy_orig + fh_orig / 2
+            
+            # Verificar si ya existe un recuadro de persona que contenga este rostro
+            tiene_cuerpo = False
+            for pbox in cache_frame["persons"]:
+                if pbox[0] <= fcx <= pbox[2] and pbox[1] <= fcy <= pbox[3]:
+                    tiene_cuerpo = True
+                    break
+                    
+            if not tiene_cuerpo:
+                # Sintetizar recuadro de persona (torso/hombros) para personas sentadas detrás de escritorios/sillas
+                px1 = max(0, int(fx_orig - fw_orig * 0.8))
+                py1 = max(0, int(fy_orig - fh_orig * 0.4))
+                px2 = min(w, int(fx_orig + fw_orig * 1.8))
+                py2 = min(h, int(fy_orig + fh_orig * 4.5))
+                cache_frame["persons"].append([px1, py1, px2, py2])
 
         # 3. DETECCION DE AMENAZAS (YOLO11 Threat)
         res_threat = self.yolo_threat(resized_frame, verbose=False)[0]
