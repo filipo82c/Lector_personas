@@ -373,15 +373,24 @@ class SecurityDetector:
                 top_score = c["top_score"]
                 margen = c["margen"]
                 
-                # REGLAS DE RECONOCIMIENTO ESTRICTO:
-                # 1. Similitud >= 0.48 (Umbral estricto para SFace)
-                # 2. Margen de distinción respecto al 2do candidato >= 0.08
-                # 3. La identidad NO debe haber sido asignada ya a otro rostro en este frame
-                es_valido = (top_score >= rec_threshold) and (margen >= 0.08) and (top_nombre not in nombres_asignados)
+                # REGLAS DE RECONOCIMIENTO ESTRICTO CON HISTERESIS DE TRACKING:
+                # 1. Si es la primera vez en la toma: requiere top_score >= rec_threshold (0.42) y margen >= 0.05
+                # 2. Histeresis de Tracking: Si esta cara YA fue reconocida de forma estable en este track_id (mismo rostro),
+                #    se mantiene el nombre reconocido incluso ante giros o sombreado si top_score >= 0.38
+                identidad_previa = track_data.get("last_stable_id", "Desconocido")
+                
+                if identidad_previa != "Desconocido" and top_nombre == identidad_previa and (top_nombre not in nombres_asignados):
+                    es_valido = (top_score >= 0.38)
+                else:
+                    es_valido = (top_score >= rec_threshold) and (margen >= 0.05) and (top_nombre not in nombres_asignados)
                 
                 label_raw = top_nombre if es_valido else "Desconocido"
                 if es_valido:
                     nombres_asignados.add(top_nombre)
+                    track_data["last_stable_id"] = top_nombre
+                else:
+                    if top_score < 0.35:
+                        track_data["last_stable_id"] = "Desconocido"
                     
                 track_data["history"].append(label_raw)
                 if len(track_data["history"]) > 7:
