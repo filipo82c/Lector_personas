@@ -452,7 +452,7 @@ class SecurityDetector:
                 box_area = w_box * h_box
                 frame_area = w * h
                 
-                if box_area < 900 or box_area > (0.40 * frame_area):
+                if box_area < 500 or box_area > (0.55 * frame_area):
                     continue
                 
                 amenaza_nombre = self.threat_labels[cls_id]
