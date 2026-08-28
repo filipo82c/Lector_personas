@@ -180,7 +180,7 @@ class SecurityDetector:
                     if img is None:
                         continue
                         
-                    # Extraer firmas faciales de la foto original y variantes (Volteado + CLAHE) para maxima robustez de angulos y luz
+                    # Extraer firmas faciales de la foto original y variantes (Volteado + CLAHE + Ángulos +-12°)
                     variantes_img = [img, cv2.flip(img, 1)]
                     try:
                         lab = cv2.cvtColor(img, cv2.COLOR_BGR2LAB)
@@ -191,6 +191,13 @@ class SecurityDetector:
                         variantes_img.append(img_clahe)
                     except Exception:
                         pass
+
+                    # Añadir variantes con rotación ±12° para soportar ángulos contrapicados (laptop desde abajo)
+                    h_img, w_img = img.shape[:2]
+                    for angle in [-12, 12]:
+                        M = cv2.getRotationMatrix2D((w_img / 2, h_img / 2), angle, 1.0)
+                        img_rot = cv2.warpAffine(img, M, (w_img, h_img))
+                        variantes_img.append(img_rot)
 
                     firmas_extraidas = 0
                     for v_img in variantes_img:
@@ -439,10 +446,13 @@ class SecurityDetector:
                 bx2_orig = int(bx2 * scale_x)
                 by2_orig = int(by2 * scale_y)
                 
-                # Filtro de área mínima para evitar falsas alarmas por ruido o detalles diminutos
+                # Filtro de área máxima y mínima (Elimina cajas gigantes que cubren todo el techo o marco)
                 w_box = bx2_orig - bx1_orig
                 h_box = by2_orig - by1_orig
-                if (w_box * h_box) < 900:
+                box_area = w_box * h_box
+                frame_area = w * h
+                
+                if box_area < 900 or box_area > (0.40 * frame_area):
                     continue
                 
                 amenaza_nombre = self.threat_labels[cls_id]
