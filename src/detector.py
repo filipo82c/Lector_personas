@@ -192,12 +192,23 @@ class SecurityDetector:
                     except Exception:
                         pass
 
-                    # Añadir variantes con rotación ±12° para soportar ángulos contrapicados (laptop desde abajo)
+                    # Añadir variantes con rotación ±12° y perspectiva de perfil sintético (perfil izquierdo y derecho)
                     h_img, w_img = img.shape[:2]
-                    for angle in [-12, 12]:
+                    for angle in [-15, -8, 8, 15]:
                         M = cv2.getRotationMatrix2D((w_img / 2, h_img / 2), angle, 1.0)
                         img_rot = cv2.warpAffine(img, M, (w_img, h_img))
                         variantes_img.append(img_rot)
+
+                    try:
+                        pts1 = np.float32([[0, 0], [w_img, 0], [0, h_img]])
+                        pts_left = np.float32([[w_img * 0.22, 0], [w_img, 0], [0, h_img]])
+                        pts_right = np.float32([[0, 0], [w_img * 0.78, 0], [w_img * 0.22, h_img]])
+                        M_left = cv2.getAffineTransform(pts1, pts_left)
+                        M_right = cv2.getAffineTransform(pts1, pts_right)
+                        variantes_img.append(cv2.warpAffine(img, M_left, (w_img, h_img)))
+                        variantes_img.append(cv2.warpAffine(img, M_right, (w_img, h_img)))
+                    except Exception:
+                        pass
 
                     firmas_extraidas = 0
                     for v_img in variantes_img:
