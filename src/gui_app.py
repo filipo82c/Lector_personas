@@ -284,19 +284,19 @@ class SecurityAppGUI:
         
         self.sens_scale = tk.Scale(
             control_frame, 
-            from_=0.30, 
-            to=0.90, 
-            resolution=0.05, 
+            from_=0.50, 
+            to=0.99, 
+            resolution=0.01, 
             orient="horizontal", 
             bg=self.colors["panel_bg"], 
             fg=self.colors["text_bright"], 
             highlightthickness=0, 
             troughcolor=self.colors["bg_main"], 
             activebackground=self.colors["accent_blue"],
-            length=140,
+            length=160,
             command=self.on_sens_change
         )
-        self.sens_scale.set(config.DETECTOR.get("yolo_threat_threshold", 0.55))
+        self.sens_scale.set(config.DETECTOR.get("yolo_threat_threshold", 0.90))
         self.sens_scale.pack(side="left", padx=5)
 
         # =========================================================================

@@ -16,10 +16,10 @@
         "sface_path": "modelos/face_recognition_sface_2021dec.onnx",
         "yolo_base_path": "modelos/yolo11n.pt",
         "yolo_threat_path": "modelos/threat_detection.pt",
-        "face_det_threshold": 0.6,
+        "face_det_threshold": 0.45,
         "face_rec_threshold": 0.48,
         "yolo_person_threshold": 0.5,
-        "yolo_threat_threshold": 0.75,
+        "yolo_threat_threshold": 0.90,
         "use_opencl": true
     },
     "sistema": {

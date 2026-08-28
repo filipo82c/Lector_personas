@@ -180,17 +180,33 @@ class SecurityDetector:
                     if img is None:
                         continue
                         
-                    h, w = img.shape[:2]
-                    self.detector_face.setInputSize((w, h))
-                    ret, faces = self.detector_face.detect(img)
-                    
-                    if ret and faces is not None:
-                        # Usar el rostro con mayor confianza (el primero)
-                        face_box = faces[0]
-                        aligned = self.recognizer_face.alignCrop(img, face_box)
-                        feat = self.recognizer_face.feature(aligned)
-                        self.db_embeddings[nombre].append(feat.flatten())
-                        print(f"[DB ROSTROS] Firma facial extraida para {nombre} desde: {os.path.basename(img_path)}")
+                    # Extraer firmas faciales de la foto original y variantes (Volteado + CLAHE) para maxima robustez de angulos y luz
+                    variantes_img = [img, cv2.flip(img, 1)]
+                    try:
+                        lab = cv2.cvtColor(img, cv2.COLOR_BGR2LAB)
+                        l, a, b = cv2.split(lab)
+                        clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8,8))
+                        cl = clahe.apply(l)
+                        img_clahe = cv2.cvtColor(cv2.merge((cl,a,b)), cv2.COLOR_LAB2BGR)
+                        variantes_img.append(img_clahe)
+                    except Exception:
+                        pass
+
+                    firmas_extraidas = 0
+                    for v_img in variantes_img:
+                        h, w = v_img.shape[:2]
+                        self.detector_face.setInputSize((w, h))
+                        ret, faces = self.detector_face.detect(v_img)
+                        
+                        if ret and faces is not None:
+                            face_box = faces[0]
+                            aligned = self.recognizer_face.alignCrop(v_img, face_box)
+                            feat = self.recognizer_face.feature(aligned)
+                            self.db_embeddings[nombre].append(feat.flatten())
+                            firmas_extraidas += 1
+                            
+                    if firmas_extraidas > 0:
+                        print(f"[DB ROSTROS] {firmas_extraidas} firmas faciales robustas extraidas para {nombre} desde: {os.path.basename(img_path)}")
                     else:
                         print(f"[DB ROSTROS] [WARNING] No se detecto rostro en la foto de: {nombre} ({os.path.basename(img_path)})")
                 
